@@ -1,0 +1,2 @@
+circuit,spice_median_A,ml_median_A,bias_A,median_error_%,95th_percentile_error_%
+3-bit CLA Adder,4.45753e-07,1.5925602956951695e-07,-5.873385840184388e-07,68.7543908189308,77.35849783598218
