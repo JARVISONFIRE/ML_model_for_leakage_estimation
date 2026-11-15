@@ -1,5 +1,9 @@
 * 3-Bit Carry Lookahead Adder - Vector: 0000000
+
 .options gmin=1e-18 abstol=1e-18 reltol=1e-6 vntol=1e-9 temp=116.86786055763616
+
+
+
 
 
 * PTM High Performance 32nm Metal Gate / High-K / Strained-Si
@@ -75,6 +79,7 @@
 
 
 
+
 .model  pmos_gate  pmos  level = 54
 
 +version = 4.0             binunit = 1               paramchk= 1               mobmod  = 0             
@@ -145,94 +150,187 @@
 
 
 
+
+
 * Subcircuit INV
+
 .subckt INV in out vdd
+
 Mp out in vdd vdd pmos_gate W=1.660995004601362e-07 L=3.2e-08
+
 Mn out in 0   0   nmos_gate W=1.9596664296575475e-07 L=3.2e-08
+
 .ends
+
+
 
 * Subcircuit NAND2
+
 .subckt NAND2 a b out vdd
+
 Mp1 out a vdd vdd pmos_gate W=1.660995004601362e-07 L=3.2e-08
+
 Mp2 out b vdd vdd pmos_gate W=1.660995004601362e-07 L=3.2e-08
+
 Mn1 out a x   0   nmos_gate W=1.9596664296575475e-07 L=3.2e-08
+
 Mn2 x   b 0   0   nmos_gate W=1.9596664296575475e-07 L=3.2e-08
+
 .ends
+
+
 
 * Subcircuit NOR2
+
 .subckt NOR2 a b out vdd
+
 Mp1 y   a vdd vdd pmos_gate W=1.660995004601362e-07 L=3.2e-08
+
 Mp2 out b y   vdd pmos_gate W=1.660995004601362e-07 L=3.2e-08
+
 Mn1 out a 0   0   nmos_gate W=1.9596664296575475e-07 L=3.2e-08
+
 Mn2 out b 0   0   nmos_gate W=1.9596664296575475e-07 L=3.2e-08
+
 .ends
+
+
 
 * Subcircuit AND2
+
 .subckt AND2 a b out vdd
+
 Xnand a b n_out vdd NAND2
+
 Xinv  n_out out vdd INV
+
 .ends
+
+
 
 * Subcircuit OR2
+
 .subckt OR2 a b out vdd
+
 Xnor a b n_out vdd NOR2
+
 Xinv n_out out vdd INV
+
 .ends
 
+
+
 * Subcircuit XOR2 (built from OR2, NAND2, AND2)
+
 .subckt XOR2 a b out vdd
+
 X_or   a b w_or   vdd OR2
+
 X_nand a b w_nand vdd NAND2
+
 X_and  w_or w_nand out vdd AND2
+
 .ends
+
+
+
 
 
 Vdd vdd 0 DC 0.9749080237694725
 
+
+
 * Input sources
+
 Va0 a0 0 DC 0.0
+
 Va1 a1 0 DC 0.0
+
 Va2 a2 0 DC 0.0
 
+
+
 Vb0 b0 0 DC 0.0
+
 Vb1 b1 0 DC 0.0
+
 Vb2 b2 0 DC 0.0
+
+
 
 Vc0 c0 0 DC 0.0
 
+
+
 * Stage 1: Generate & Propagate signals
+
 X_g0 a0 b0 g0 vdd AND2
+
 X_p0 a0 b0 p0 vdd XOR2
 
+
+
 X_g1 a1 b1 g1 vdd AND2
+
 X_p1 a1 b1 p1 vdd XOR2
 
+
+
 X_g2 a2 b2 g2 vdd AND2
+
 X_p2 a2 b2 p2 vdd XOR2
 
+
+
 * Stage 2: Carry Logic
+
 * C1 = G0 + P0*C0
+
 X_and_c1 p0 c0 w_pc0 vdd AND2
+
 X_or_c1  g0 w_pc0 c1 vdd OR2
 
+
+
 * C2 = G1 + P1*C1
+
 X_and_c2 p1 c1 w_pc1 vdd AND2
+
 X_or_c2  g1 w_pc1 c2 vdd OR2
 
+
+
 * C3 = G2 + P2*C2
+
 X_and_c3 p2 c2 w_pc2 vdd AND2
+
 X_or_c3  g2 w_pc2 c3 vdd OR2
 
+
+
 * Stage 3: Sum bits
+
 * S0 = P0 ^ C0
+
 X_s0 p0 c0 s0 vdd XOR2
+
 * S1 = P1 ^ C1
+
 X_s1 p1 c1 s1 vdd XOR2
+
 * S2 = P2 ^ C2
+
 X_s2 p2 c2 s2 vdd XOR2
 
+
+
 .control
+
 op
+
 print i(Vdd)
+
 .endc
+
 .end
+

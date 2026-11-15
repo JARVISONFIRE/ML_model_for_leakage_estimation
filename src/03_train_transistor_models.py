@@ -1,183 +1,287 @@
 """
+
 Script 03: Machine Learning Model Training, Comparison, and Selection (Deliverables 4 & 5)
-Evaluates 4 candidate models x 4 cases:
-1. Multi-Layer Perceptron (MLP)
-2. XGBoost Regressor
-3. LightGBM Regressor
-4. Random Forest Regressor
-Generates Deliverable 4 (Model comparison table) & Deliverable 5 (Chosen model parity plots & saved models)
+
+
+
+For each of the 4 cases (NMOS_ON/OFF, PMOS_ON/OFF) it trains 4 model TYPES (default:
+
+MLP, XGBoost, LightGBM, RandomForest). Every model type is a SignedCurrentModel: one
+
+regressor per terminal (id, ig, is, ib) on standardised log10|I| plus a sign model.
+
+
+
+Metrics (computed per terminal, on SIGNED currents, so a wrong sign counts as an error):
+
+  * R2           : R2 of log10|I|
+
+  * median / p95 : relative error |pred - true| / |true| in %, over samples with |true| >= EVAL_FLOOR
+
+                   (below that the SPICE value is numerical noise at the gmin/abstol level)
+
+The comparison table reports the mean of the per-terminal values; the full per-terminal
+
+detail goes to model_comparison_per_terminal.csv.
+
+
+
+Selection: score = mean_t(val median err) + 0.1 * mean_t(val p95 err), lower is better.
+
+Outputs: model_comparison_table.csv, model_comparison_per_terminal.csv,
+
+         chosen_models_test_metrics.csv, parity_test_<case>.png (all 4 terminals), saved models.
+
 """
+
 import sys
-import os
+
+import time
+
 from pathlib import Path
+
+
+
 import joblib
-import numpy as np
-import pandas as pd
+
+import matplotlib
+
+matplotlib.use("Agg")
+
 import matplotlib.pyplot as plt
-import seaborn as sns
+
+import numpy as np
+
+import pandas as pd
+
+from sklearn.metrics import r2_score
 
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.neural_network import MLPRegressor
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.multioutput import MultiOutputRegressor
-from sklearn.metrics import r2_score
-import xgboost as xgb
-import lightgbm as lgb
 
-# Ensure project root is in sys.path
+
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+
+
 from config import DATA_DIR, SAVED_MODELS_DIR, RESULTS_DIR, RANDOM_SEED, CASES
-from src.model_wrapper import LogTransformedModel, FLOOR_VAL
 
-sns.set_theme(style="whitegrid", font_scale=1.1)
+from src.model_wrapper import (FEATURE_COLS, TARGET_COLS, FLOOR_VAL, EVAL_FLOOR,
 
-FEATURE_COLS = ['vdd', 'temp', 'w', 'vd', 'vs', 'vg', 'vb', 'vth0', 'toxe', 'ndep', 'u0', 'xj']
-TARGET_COLS  = ['id', 'ig', 'is', 'ib']
+                               SignedCurrentModel, available_model_types)
 
 
-def compute_metrics(y_true, y_pred):
-    """Computes R2 on log scale and median & 95th% relative errors on currents."""
-    y_true_abs = np.abs(y_true)
-    y_true_log = np.log10(np.maximum(y_true_abs, FLOOR_VAL))
-    y_pred_log = np.log10(np.maximum(np.abs(y_pred), FLOOR_VAL))
-
-    r2 = r2_score(y_true_log, y_pred_log)
-    denom = np.maximum(y_true_abs, 1e-15)
-    rel_errors = np.abs(y_pred - y_true_abs) / denom * 100.0
-
-    med_err = np.median(rel_errors)
-    p95_err = np.percentile(rel_errors, 95)
-    return r2, med_err, p95_err
 
 
-def get_candidate_models():
-    """Returns the 4 candidate model architectures."""
-    return {
-        "MLP (Neural Net)": MLPRegressor(
-            hidden_layer_sizes=(128, 64, 32),
-            activation='relu',
-            max_iter=500,
-            random_state=RANDOM_SEED
-        ),
-        "XGBoost": MultiOutputRegressor(
-            xgb.XGBRegressor(
-                n_estimators=150,
-                max_depth=6,
-                learning_rate=0.08,
-                random_state=RANDOM_SEED,
-                n_jobs=-1
-            )
-        ),
-        "LightGBM": MultiOutputRegressor(
-            lgb.LGBMRegressor(
-                n_estimators=150,
-                max_depth=6,
-                learning_rate=0.08,
-                random_state=RANDOM_SEED,
-                n_jobs=-1,
-                verbose=-1
-            )
-        ),
-        "Random Forest": RandomForestRegressor(
-            n_estimators=100,
-            max_depth=12,
-            random_state=RANDOM_SEED,
-            n_jobs=-1
-        )
-    }
+
+def terminal_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> pd.DataFrame:
+
+    """y_true, y_pred: (n, 4) signed currents. Returns one row per terminal."""
+
+    rows = []
+
+    for j, t in enumerate(TARGET_COLS):
+
+        yt, yp = y_true[:, j], y_pred[:, j]
+
+        mask = np.abs(yt) >= EVAL_FLOOR
+
+        lt = np.log10(np.maximum(np.abs(yt), FLOOR_VAL))[mask]
+
+        lp = np.log10(np.maximum(np.abs(yp), FLOOR_VAL))[mask]
+
+        rel = np.abs(yp[mask] - yt[mask]) / np.abs(yt[mask]) * 100.0
+
+        rows.append({
+
+            'terminal': t,
+
+            'r2_log': r2_score(lt, lp),
+
+            'median_err_%': np.median(rel),
+
+            'p95_err_%': np.percentile(rel, 95),
+
+            'sign_acc_%': 100.0 * np.mean(np.sign(yt[mask]) == np.sign(yp[mask])),
+
+            'frac_evaluated': mask.mean(),
+
+        })
+
+    return pd.DataFrame(rows)
+
+
+
+
+
+def pooled(m: pd.DataFrame):
+
+    return m['r2_log'].mean(), m['median_err_%'].mean(), m['p95_err_%'].mean()
+
+
+
+
+
+def selection_score(m: pd.DataFrame) -> float:
+
+    return m['median_err_%'].mean() + 0.1 * m['p95_err_%'].mean()
+
+
+
+
+
+def parity_plot(case, model_name, y_true, y_pred, test_m, out_path):
+
+    fig, axes = plt.subplots(2, 2, figsize=(10, 10))
+
+    for j, (ax, t) in enumerate(zip(axes.ravel(), TARGET_COLS)):
+
+        yt = np.maximum(np.abs(y_true[:, j]), FLOOR_VAL)
+
+        yp = np.maximum(np.abs(y_pred[:, j]), FLOOR_VAL)
+
+        ax.scatter(yt, yp, s=8, alpha=0.3, color='royalblue')
+
+        lo, hi = min(yt.min(), yp.min()), max(yt.max(), yp.max())
+
+        ax.plot([lo, hi], [lo, hi], 'r--', lw=1.2)
+
+        ax.set_xscale('log'); ax.set_yscale('log')
+
+        r = test_m.iloc[j]
+
+        ax.set_title(f"{t.upper()}  med={r['median_err_%']:.2f}%  p95={r['p95_err_%']:.1f}%", fontsize=10)
+
+        ax.set_xlabel(f"SPICE |{t}| (A)"); ax.set_ylabel(f"ML |{t}| (A)")
+
+    fig.suptitle(f"{case} test-set parity ({model_name})")
+
+    plt.tight_layout()
+
+    plt.savefig(out_path, dpi=200)
+
+    plt.close()
+
+
+
 
 
 def main():
+
     SAVED_MODELS_DIR.mkdir(parents=True, exist_ok=True)
+
     comp_dir = RESULTS_DIR / "model_comparison"
+
     comp_dir.mkdir(parents=True, exist_ok=True)
 
-    comparison_records = []
-    chosen_models = {}
 
-    print("=================================================================")
-    print("      TRAINING & EVALUATING 4 ML MODELS ACROSS 4 CASES           ")
-    print("=================================================================")
+
+    model_types = available_model_types()
+
+    if len(model_types) < 4:
+
+        print(f"[!] Only {len(model_types)} model types available: {model_types}")
+
+    print("Model types:", model_types)
+
+
+
+    comparison, per_terminal, chosen_rows = [], [], []
+
+
 
     for case in CASES:
-        csv_file = DATA_DIR / f"{case}.csv"
+
         print(f"\n---> Case: {case} <---")
-        df = pd.read_csv(csv_file)
 
-        X = df[FEATURE_COLS]
-        y = df[TARGET_COLS]
+        df = pd.read_csv(DATA_DIR / f"{case}.csv")
 
-        # 70% Train, 15% Val, 15% Test
-        X_train, X_temp, y_train, y_temp = train_test_split(X, y, test_size=0.30, random_state=RANDOM_SEED)
-        X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.50, random_state=RANDOM_SEED)
+        X, y = df[FEATURE_COLS], df[TARGET_COLS]
 
-        candidates = get_candidate_models()
-        best_val_err = float('inf')
-        best_name = None
-        best_model = None
 
-        for name, estimator in candidates.items():
-            pipeline = LogTransformedModel(estimator)
-            pipeline.fit(X_train, y_train)
 
-            # Validation evaluation
-            y_val_pred = pipeline.predict(X_val)
-            r2, med_err, p95_err = compute_metrics(y_val.values, y_val_pred)
+        # 70 / 15 / 15 with a fixed seed
 
-            print(f"  [{name:18s}] Val R² = {r2:.4f} | Med Err = {med_err:.2f}% | 95th Err = {p95_err:.2f}%")
+        X_tr, X_tmp, y_tr, y_tmp = train_test_split(X, y, test_size=0.30, random_state=RANDOM_SEED)
 
-            comparison_records.append({
-                'case': case,
-                'model': name,
-                'val_r2': r2,
-                'val_median_error_%': med_err,
-                'val_95th_percentile_error_%': p95_err
-            })
+        X_va, X_te, y_va, y_te = train_test_split(X_tmp, y_tmp, test_size=0.50, random_state=RANDOM_SEED)
 
-            if med_err < best_val_err:
-                best_val_err = med_err
-                best_name = name
-                best_model = pipeline
 
-        print(f"  >>> Best model selected for {case}: {best_name}")
 
-        # Evaluate best model on unseen Test Set
-        y_test_pred = best_model.predict(X_test)
-        test_r2, test_med, test_p95 = compute_metrics(y_test.values, y_test_pred)
-        print(f"  >>> Test Set: R² = {test_r2:.4f} | Med Err = {test_med:.2f}% | 95th Err = {test_p95:.2f}%")
+        best = (None, np.inf, None)
 
-        # Save chosen model
-        model_out = SAVED_MODELS_DIR / f"{case}_best_model.joblib"
-        joblib.dump(best_model, model_out)
-        chosen_models[case] = best_model
+        for name in model_types:
 
-        # Deliverable 5: Predicted vs SPICE Parity Plot for test set (Id)
-        fig, ax = plt.subplots(figsize=(6, 6))
-        y_t_id = np.abs(y_test['id'].values)
-        y_p_id = np.abs(y_test_pred[:, 0])
+            t0 = time.time()
 
-        ax.scatter(y_t_id, y_p_id, alpha=0.3, s=15, color='royalblue', label='Test Samples')
-        min_v = max(1e-15, min(y_t_id.min(), y_p_id.min()))
-        max_v = max(y_t_id.max(), y_p_id.max())
-        ax.plot([min_v, max_v], [min_v, max_v], 'r--', lw=1.5, label='Ideal 1:1')
+            model = SignedCurrentModel(name, seed=RANDOM_SEED).fit(X_tr, y_tr)
 
-        ax.set_xscale('log')
-        ax.set_yscale('log')
-        ax.set_xlabel("SPICE |Id| (A)")
-        ax.set_ylabel("ML Predicted |Id| (A)")
-        ax.set_title(f"{case} Test Parity ({best_name})\nMed Err={test_med:.2f}%, 95th%={test_p95:.2f}%")
-        ax.legend()
-        plt.tight_layout()
-        plt.savefig(comp_dir / f"parity_test_{case}.png", dpi=300)
-        plt.close()
+            m = terminal_metrics(y_va.values, model.predict(X_va))
 
-    # Save Deliverable 4 Model Comparison Table
-    df_comp = pd.DataFrame(comparison_records)
-    df_comp.to_csv(comp_dir / "model_comparison_table.csv", index=False)
-    print(f"\n[+] Saved Deliverable 4 table to {comp_dir / 'model_comparison_table.csv'}")
+            r2, med, p95 = pooled(m)
+
+            print(f"  [{name:13s}] val R2={r2:.4f} | median={med:6.2f}% | p95={p95:7.2f}% "
+
+                  f"| {time.time() - t0:5.0f}s")
+
+            comparison.append({'case': case, 'model': name, 'val_r2': r2,
+
+                               'val_median_error_%': med, 'val_95th_percentile_error_%': p95})
+
+            for _, r in m.iterrows():
+
+                per_terminal.append({'case': case, 'model': name, **r.to_dict()})
+
+            sc = selection_score(m)
+
+            if sc < best[1]:
+
+                best = (name, sc, model)
+
+
+
+        best_name, _, best_model = best
+
+        y_te_pred = best_model.predict(X_te)
+
+        test_m = terminal_metrics(y_te.values, y_te_pred)
+
+        r2, med, p95 = pooled(test_m)
+
+        print(f"  >>> Selected {best_name} | TEST R2={r2:.4f} median={med:.2f}% p95={p95:.2f}%")
+
+        print(test_m.to_string(index=False, float_format=lambda v: f"{v:.3f}"))
+
+
+
+        chosen_rows.append({'case': case, 'model': best_name, 'test_r2': r2,
+
+                            'test_median_error_%': med, 'test_95th_percentile_error_%': p95,
+
+                            **{f"{r['terminal']}_median_%": r['median_err_%'] for _, r in test_m.iterrows()},
+
+                            **{f"{r['terminal']}_p95_%": r['p95_err_%'] for _, r in test_m.iterrows()}})
+
+
+
+        joblib.dump(best_model, SAVED_MODELS_DIR / f"{case}_best_model.joblib")
+
+        parity_plot(case, best_name, y_te.values, y_te_pred, test_m, comp_dir / f"parity_test_{case}.png")
+
+
+
+    pd.DataFrame(comparison).to_csv(comp_dir / "model_comparison_table.csv", index=False)
+
+    pd.DataFrame(per_terminal).to_csv(comp_dir / "model_comparison_per_terminal.csv", index=False)
+
+    pd.DataFrame(chosen_rows).to_csv(comp_dir / "chosen_models_test_metrics.csv", index=False)
+
+    print(f"\n[+] Saved comparison tables and chosen-model test metrics to {comp_dir}")
+
+
+
 
 
 if __name__ == "__main__":
+
     main()
