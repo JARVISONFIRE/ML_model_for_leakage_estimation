@@ -1,2 +1,2 @@
-circuit,spice_median_A,ml_median_A,bias_A,median_error_%,95th_percentile_error_%
-3-bit CLA Adder,5.43786e-07,5.400107912298901e-07,-1.4638737294737641e-09,0.30581127580866635,3.5834436390622737
+circuit,spice_median_A,ml_median_A,bias_A,median_error_%,mean_error_%,mean_accuracy_%,95th_percentile_error_%
+3-bit CLA Adder,5.43786e-07,5.400107912298901e-07,-1.4638737294737641e-09,0.30581127580866635,0.8070011086543678,99.19299889134564,3.5834436390622737

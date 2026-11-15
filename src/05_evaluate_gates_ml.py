@@ -401,6 +401,10 @@ def main():
 
             'median_error_%': np.median(abs_rel),
 
+            'mean_error_%': np.mean(abs_rel),
+
+            'mean_accuracy_%': 100.0 - np.mean(abs_rel),
+
             '95th_percentile_error_%': np.percentile(abs_rel, 95),
 
             'median_signed_error_%': np.median(signed_rel),   # sign shows over/under-prediction

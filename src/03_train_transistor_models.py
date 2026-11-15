@@ -102,6 +102,10 @@ def terminal_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> pd.DataFrame:
 
             'median_err_%': np.median(rel),
 
+            'mean_err_%': np.mean(rel),
+
+            'mean_acc_%': 100.0 - np.mean(rel),
+
             'p95_err_%': np.percentile(rel, 95),
 
             'sign_acc_%': 100.0 * np.mean(np.sign(yt[mask]) == np.sign(yp[mask])),
@@ -228,7 +232,13 @@ def main():
 
             comparison.append({'case': case, 'model': name, 'val_r2': r2,
 
-                               'val_median_error_%': med, 'val_95th_percentile_error_%': p95})
+                               'val_median_error_%': med,
+
+                               'val_mean_error_%': m['mean_err_%'].mean(),
+
+                               'val_mean_accuracy_%': 100.0 - m['mean_err_%'].mean(),
+
+                               'val_95th_percentile_error_%': p95})
 
             for _, r in m.iterrows():
 
@@ -250,7 +260,11 @@ def main():
 
         r2, med, p95 = pooled(test_m)
 
-        print(f"  >>> Selected {best_name} | TEST R2={r2:.4f} median={med:.2f}% p95={p95:.2f}%")
+        mean_err = test_m['mean_err_%'].mean()
+
+        mean_acc = 100.0 - mean_err
+
+        print(f"  >>> Selected {best_name} | TEST R2={r2:.4f} median={med:.2f}% mean_err={mean_err:.2f}% (acc={mean_acc:.2f}%) p95={p95:.2f}%")
 
         print(test_m.to_string(index=False, float_format=lambda v: f"{v:.3f}"))
 
@@ -258,9 +272,17 @@ def main():
 
         chosen_rows.append({'case': case, 'model': best_name, 'test_r2': r2,
 
-                            'test_median_error_%': med, 'test_95th_percentile_error_%': p95,
+                            'test_median_error_%': med,
+
+                            'test_mean_error_%': mean_err,
+
+                            'test_mean_accuracy_%': mean_acc,
+
+                            'test_95th_percentile_error_%': p95,
 
                             **{f"{r['terminal']}_median_%": r['median_err_%'] for _, r in test_m.iterrows()},
+
+                            **{f"{r['terminal']}_mean_%": r['mean_err_%'] for _, r in test_m.iterrows()},
 
                             **{f"{r['terminal']}_p95_%": r['p95_err_%'] for _, r in test_m.iterrows()}})
 

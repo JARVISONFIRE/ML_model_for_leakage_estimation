@@ -751,6 +751,10 @@ def main():
 
         'median_error_%': med_err,
 
+        'mean_error_%': np.mean(rel_errors),
+
+        'mean_accuracy_%': 100.0 - np.mean(rel_errors),
+
         '95th_percentile_error_%': p95_err
 
     }])

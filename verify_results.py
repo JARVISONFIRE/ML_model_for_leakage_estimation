@@ -93,7 +93,16 @@ def main():
         print("      └── Model Benchmark Summary:")
         for case, grp in df_comp.groupby('case'):
             best_m = grp.loc[grp['val_median_error_%'].idxmin()]
-            print(f"          • {case:10s} -> Best: {best_m['model']:18s} (Val R² = {best_m['val_r2']:.4f}, Med Err = {best_m['val_median_error_%']:.2f}%)")
+            mean_str = f", Mean Err = {best_m['val_mean_error_%']:.2f}%" if 'val_mean_error_%' in best_m else ""
+            print(f"          • {case:10s} -> Best: {best_m['model']:18s} (Val R² = {best_m['val_r2']:.4f}, Med Err = {best_m['val_median_error_%']:.2f}%{mean_str})")
+
+    chosen_p = RESULTS_DIR / "model_comparison" / "chosen_models_test_metrics.csv"
+    if check_file(chosen_p, "Deliverable 5 Chosen Model Test Metrics"):
+        df_chosen = pd.read_csv(chosen_p)
+        print("      └── Chosen Models Test Set Evaluation:")
+        for _, r in df_chosen.iterrows():
+            mean_str = f", Mean Err = {r['test_mean_error_%']:.2f}%, Acc = {r['test_mean_accuracy_%']:.2f}%" if 'test_mean_error_%' in r else ""
+            print(f"          • {r['case']:10s} ({r['model']}): R² = {r['test_r2']:.4f}, Med Err = {r['test_median_error_%']:.2f}%{mean_str}")
 
     for c in ["NMOS_ON", "NMOS_OFF", "PMOS_ON", "PMOS_OFF"]:
         m_p = SAVED_MODELS_DIR / f"{c}_best_model.joblib"
@@ -104,9 +113,14 @@ def main():
     gate_table = RESULTS_DIR / "gate_results" / "gate_results_table.csv"
     if check_file(gate_table, "Deliverable 6 Gate Results Table"):
         df_g = pd.read_csv(gate_table)
-        print(f"      └── 18 Gate Cases Evaluated. Overall Median Error = {df_g['median_error_%'].median():.2f}%")
-        print(f"          Best Gate:  {df_g.loc[df_g['median_error_%'].idxmin()]['gate']} ({df_g.loc[df_g['median_error_%'].idxmin()]['input']}) -> {df_g['median_error_%'].min():.2f}% error")
-        print(f"          Worst Gate: {df_g.loc[df_g['median_error_%'].idxmax()]['gate']} ({df_g.loc[df_g['median_error_%'].idxmax()]['input']}) -> {df_g['median_error_%'].max():.2f}% error")
+        med_err_all = df_g['median_error_%'].median()
+        mean_err_all = df_g['mean_error_%'].mean() if 'mean_error_%' in df_g.columns else None
+        mean_acc_all = df_g['mean_accuracy_%'].mean() if 'mean_accuracy_%' in df_g.columns else None
+        print(f"      └── 18 Gate Cases Evaluated. Overall Median Error = {med_err_all:.4f}%")
+        if mean_err_all is not None:
+            print(f"          Overall Mean Error = {mean_err_all:.4f}% | Overall Mean Accuracy = {mean_acc_all:.4f}%")
+        print(f"          Best Gate:  {df_g.loc[df_g['median_error_%'].idxmin()]['gate']} ({df_g.loc[df_g['median_error_%'].idxmin()]['input']}) -> {df_g['median_error_%'].min():.4f}% error")
+        print(f"          Worst Gate: {df_g.loc[df_g['median_error_%'].idxmax()]['gate']} ({df_g.loc[df_g['median_error_%'].idxmax()]['input']}) -> {df_g['median_error_%'].max():.4f}% error")
 
     check_file(RESULTS_DIR / "gate_results" / "gate_parity_plot.png", "Deliverable 7 Gate Parity Plot")
 
@@ -116,7 +130,8 @@ def main():
     if check_file(cla_sum, "Deliverable 8 CLA Results Table"):
         df_cla = pd.read_csv(cla_sum).iloc[0]
         print(f"      └── SPICE Median: {df_cla['spice_median_A']:.3e} A | ML Median: {df_cla['ml_median_A']:.3e} A")
-        print(f"      └── Median Error: {df_cla['median_error_%']:.2f}% | 95th% Error: {df_cla['95th_percentile_error_%']:.2f}%")
+        mean_str = f" | Mean Error: {df_cla['mean_error_%']:.2f}% | Mean Accuracy: {df_cla['mean_accuracy_%']:.2f}%" if 'mean_error_%' in df_cla else ""
+        print(f"      └── Median Error: {df_cla['median_error_%']:.2f}%{mean_str} | 95th% Error: {df_cla['95th_percentile_error_%']:.2f}%")
 
     check_file(RESULTS_DIR / "cla_results" / "cla_parity_plot.png", "Deliverable 8 CLA Parity Plot")
 
