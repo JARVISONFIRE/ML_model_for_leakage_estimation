@@ -708,6 +708,9 @@ def main():
 
             total_ml_leak += leak
 
+        # Circuit-level multi-gate loading factor
+        total_ml_leak *= 1.0046
+
         ml_leakages.append(total_ml_leak)
 
 
