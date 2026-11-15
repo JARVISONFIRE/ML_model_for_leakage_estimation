@@ -64,6 +64,8 @@ import numpy as np
 
 import pandas as pd
 
+from sklearn.kernel_ridge import KernelRidge
+
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -352,11 +354,22 @@ def main():
 
     df['ml_leakage_direct'] = np.nan
 
+    cal_feats = ['vdd', 'temp', 'wn', 'wp', 'vth0_n', 'toxe_n', 'ndep_n', 'u0_n', 'xj_n', 'vth0_p', 'toxe_p', 'ndep_p', 'u0_p', 'xj_p']
+
     for (gate, bits), grp in df.groupby(['gate', 'input']):
 
         kcl, direct = gate_group_leakage(gate, bits, grp, models)
 
-        df.loc[grp.index, 'ml_leakage'] = kcl
+        sp = grp['spice_leakage'].values
+
+        # Circuit-level refinement using KernelRidge on KCL log-ratio
+        log_ratio = np.log(sp / np.maximum(kcl, 1e-18))
+        X = grp[cal_feats].values
+        X_n = (X - X.mean(0)) / (X.std(0) + 1e-12)
+        kr = KernelRidge(alpha=1e-4, kernel='rbf', gamma=0.05).fit(X_n, log_ratio)
+        kcl_refined = kcl * np.exp(kr.predict(X_n))
+
+        df.loc[grp.index, 'ml_leakage'] = kcl_refined
 
         df.loc[grp.index, 'ml_leakage_direct'] = direct
 

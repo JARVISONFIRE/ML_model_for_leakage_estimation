@@ -84,7 +84,9 @@ def terminal_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> pd.DataFrame:
 
         yt, yp = y_true[:, j], y_pred[:, j]
 
-        mask = np.abs(yt) >= EVAL_FLOOR
+        floor = 1e-14 if (t == 'ig' and np.percentile(np.abs(yt), 95) < 1e-13) else EVAL_FLOOR
+
+        mask = np.abs(yt) >= floor
 
         lt = np.log10(np.maximum(np.abs(yt), FLOOR_VAL))[mask]
 
