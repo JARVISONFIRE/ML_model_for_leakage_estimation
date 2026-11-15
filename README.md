@@ -1,239 +1,246 @@
-# ML-Driven PVT Variation Aware Leakage Estimation
-**Course Project — Digital VLSI Design (DVD)**
+# ML-Driven PVT Variation-Aware Leakage Estimation in 32nm CMOS
+
+An end-to-end hierarchical machine learning framework for instantaneous, variation-aware leakage power estimation in nanoscale digital CMOS circuits under Process, Voltage, and Temperature (PVT) variations.
 
 ---
 
-## 1. Project Overview & Objectives
+## 1. Executive Summary
 
-### What Does the Project Expect Us to Do?
-In nanoscale CMOS technologies (such as 32nm High-Performance bulk CMOS), leakage current is a dominant component of power dissipation and varies exponentially with **Process ($P$)**, **Voltage ($V$)**, and **Temperature ($T$)** variations. Full transistor-level SPICE simulations across large multi-gate circuits and thousands of PVT corners are computationally prohibitive.
+In nanoscale CMOS technologies, leakage current is a primary contributor to total chip power dissipation and exhibits extreme exponential sensitivity to Process ($P$), Voltage ($V$), and Temperature ($T$) variations. Performing exhaustive transistor-level SPICE Monte Carlo simulations across large multi-gate netlists and thousands of PVT corners is computationally prohibitive for VLSI design exploration and sign-off.
 
-This project implements a **hierarchical Machine Learning framework** to predict circuit leakage currents instantaneously without full SPICE simulations:
-1. **Transistor Level**: Train 4 specialized ML models on single NMOS and PMOS transistors (ON and OFF states) under comprehensive PVT sweeps to predict terminal currents ($I_d, I_g, I_s, I_b$).
-2. **Gate Level**: Predict leakage currents for 5 standard static CMOS gates (`INV`, `NAND2`, `NOR2`, `AND2`, `OR2`) across all 18 input states and 200 random PVT corners using internal node voltages and the trained transistor ML models.
-3. **Circuit Level**: Validate the framework on a larger assigned circuit (**3-bit Carry Lookahead Adder**) by composing gate-level ML models hierarchically and comparing results against a complete transistor-level SPICE netlist.
-4. **Target**: Achieve up to **99% mean prediction accuracy** against SPICE.
+This repository provides an automated, hierarchical machine learning modeling methodology that replaces brute-force SPICE runs with instantaneous inference:
 
----
-
-## 2. Team Assignment Specifications
-
-| Parameter | Assigned Value | Notes |
-| :--- | :--- | :--- |
-| **Technology Node** | **32nm HP** (`32nm_HP.pm`) | High-Performance Metal Gate / High-K / Strained-Si |
-| **Nominal Supply Voltage ($V_{DD}$)** | **1.0 V** | Sweep range: $0.90\text{ V}$ to $1.10\text{ V}$ ($\pm 10\%$) |
-| **Feature Size / Min Length ($L_{min}$)** | **32 nm** ($32\times 10^{-9}\text{ m}$) | Fixed for all transistors |
-| **Transistor Width ($W$)** | **$1\times L_{min}$ to $8\times L_{min}$** | $32\text{ nm}$ to $256\text{ nm}$ |
-| **Temperature ($T$)** | **$-40^\circ\text{C}$ to $+125^\circ\text{C}$** | Uniform distribution |
-| **Test Circuit** | **3-bit Carry Lookahead Adder (CLA)** | 7 inputs ($A_0-A_2, B_0-B_2, C_0$), 128 input vectors |
+1. **Transistor Level**: Physics-informed neural regressors trained on 4 single-transistor operating states (`NMOS_ON`, `NMOS_OFF`, `PMOS_ON`, `PMOS_OFF`) predict all four terminal currents ($I_d, I_g, I_s, I_b$) with sign preservation across continuous operating voltages and BSIM4 process parameters.
+2. **Gate Level**: Static CMOS logic gates (`INV`, `NAND2`, `NOR2`, `AND2`, `OR2`) are evaluated across all 18 input states by solving Kirchhoff's Current Law (KCL) at internal floating nodes and querying the transistor models.
+3. **Circuit Level**: Full hierarchical circuit validation on a **3-Bit Carry Lookahead Adder (CLA)** across 128 logic vectors $\times$ 200 random PVT corners (25,600 simulations), achieving **99.19% mean prediction accuracy** against complete SPICE netlist simulations.
 
 ---
 
-## 3. What Are We Doing Exactly? (Technical Methodology)
+## 2. Benchmark Results
+
+### A. Circuit-Level Validation (3-Bit Carry Lookahead Adder — 25,600 Runs)
+Validated against complete SPICE netlist simulations across 128 input patterns and 200 random PVT corners:
+
+| Circuit | SPICE Median Current | ML Median Current | Bias | Median Error | Mean Error | Mean Accuracy | 95th% Error |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **3-Bit CLA Adder** | $5.438 \times 10^{-7}\text{ A}$ | $5.400 \times 10^{-7}\text{ A}$ | $-1.464\text{ nA}$ | **0.31%** | **0.81%** | **99.19%** | **3.58%** |
+
+*Output files: [cla_results_summary.csv](file:///home/harry/ARCHY/home_harry_complete/3-1/DVD/ML-Driven-PVT-Variation-Aware-Leakage-Estimation/pvt_leakage_project/results/cla_results/cla_results_summary.csv) | Parity plot: [cla_parity_plot.png](file:///home/harry/ARCHY/home_harry_complete/3-1/DVD/ML-Driven-PVT-Variation-Aware-Leakage-Estimation/pvt_leakage_project/results/cla_results/cla_parity_plot.png)*
+
+### B. Gate-Level Performance (18 Input States $\times$ 200 PVT Corners = 3,600 Runs)
+Supply current ($I_{VDD}$) prediction accuracy across 5 standard static CMOS cells:
+
+| Gate Type | Input State | SPICE Median | ML Median | Median Error | Mean Error | Mean Accuracy |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **INV** | `0` | $1.378 \times 10^{-8}\text{ A}$ | $1.378 \times 10^{-8}\text{ A}$ | 0.0012% | 0.0016% | **99.9984%** |
+| **INV** | `1` | $6.544 \times 10^{-9}\text{ A}$ | $6.544 \times 10^{-9}\text{ A}$ | 0.0023% | 0.0026% | **99.9974%** |
+| **NAND2** | `00` | $4.372 \times 10^{-10}\text{ A}$ | $4.372 \times 10^{-10}\text{ A}$ | 0.0022% | 0.0038% | **99.9962%** |
+| **NAND2** | `01` | $1.376 \times 10^{-8}\text{ A}$ | $1.376 \times 10^{-8}\text{ A}$ | 0.0012% | 0.0016% | **99.9984%** |
+| **NAND2** | `10` | $4.429 \times 10^{-9}\text{ A}$ | $4.429 \times 10^{-9}\text{ A}$ | 0.0010% | 0.0013% | **99.9987%** |
+| **NAND2** | `11` | $1.308 \times 10^{-8}\text{ A}$ | $1.308 \times 10^{-8}\text{ A}$ | 0.0022% | 0.0026% | **99.9974%** |
+| **NOR2** | `00` | $2.751 \times 10^{-8}\text{ A}$ | $2.751 \times 10^{-8}\text{ A}$ | 0.0012% | 0.0016% | **99.9984%** |
+| **NOR2** | `01` | $6.552 \times 10^{-9}\text{ A}$ | $6.552 \times 10^{-9}\text{ A}$ | 0.0022% | 0.0026% | **99.9974%** |
+| **NOR2** | `10` | $1.017 \times 10^{-9}\text{ A}$ | $1.017 \times 10^{-9}\text{ A}$ | 0.0013% | 0.0017% | **99.9983%** |
+| **NOR2** | `11` | $2.411 \times 10^{-11}\text{ A}$ | $2.411 \times 10^{-11}\text{ A}$ | 0.0011% | 0.0013% | **99.9987%** |
+| **AND2** | `00`, `01`, `10`, `11` | $7.39\text{ nA}$ – $30.82\text{ nA}$ | $7.39\text{ nA}$ – $30.81\text{ nA}$ | 0.0014% – 0.0019% | 0.0020% – 0.0024% | **99.9978%** |
+| **OR2** | `00`, `01`, `10`, `11` | $13.82\text{ nA}$ – $37.52\text{ nA}$ | $13.82\text{ nA}$ – $37.52\text{ nA}$ | 0.0012% – 0.0015% | 0.0016% – 0.0021% | **99.9981%** |
+| **Overall** | **All 18 Gates** | — | — | **0.0014%** | **0.0020%** | **99.9980%** |
+
+*Output files: [gate_results_table.csv](file:///home/harry/ARCHY/home_harry_complete/3-1/DVD/ML-Driven-PVT-Variation-Aware-Leakage-Estimation/pvt_leakage_project/results/gate_results/gate_results_table.csv) | Parity plot: [gate_parity_plot.png](file:///home/harry/ARCHY/home_harry_complete/3-1/DVD/ML-Driven-PVT-Variation-Aware-Leakage-Estimation/pvt_leakage_project/results/gate_results/gate_parity_plot.png)*
+
+### C. Transistor Test-Set Evaluation (Unseen 15% Hold-Out Set)
+Evaluation across all 4 terminal currents ($I_d, I_g, I_s, I_b$):
+
+| Operating Mode | Best Model | Test $R^2_{\log}$ | Median Error | Mean Error | Mean Accuracy | 95th% Error |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **NMOS_ON** | PyTorch L-BFGS MLP | **0.9997** | **1.45%** | **2.40%** | **97.60%** | 6.62% |
+| **NMOS_OFF** | PyTorch L-BFGS MLP | **0.9982** | **0.91%** | **4.10%** | **95.90%** | 5.54% |
+| **PMOS_ON** | PyTorch L-BFGS MLP | **0.9998** | **1.17%** | **2.48%** | **97.52%** | 4.79% |
+| **PMOS_OFF** | PyTorch L-BFGS MLP | **0.9890** | **2.90%** | **5.40%** | **94.60%** | 12.79% |
+
+*Output files: [chosen_models_test_metrics.csv](file:///home/harry/ARCHY/home_harry_complete/3-1/DVD/ML-Driven-PVT-Variation-Aware-Leakage-Estimation/pvt_leakage_project/results/model_comparison/chosen_models_test_metrics.csv) | Model comparison: [model_comparison_table.csv](file:///home/harry/ARCHY/home_harry_complete/3-1/DVD/ML-Driven-PVT-Variation-Aware-Leakage-Estimation/pvt_leakage_project/results/model_comparison/model_comparison_table.csv)*
+
+---
+
+## 3. Technology & PVT Variation Specifications
+
+The framework is calibrated to the **32nm High-Performance (HP) bulk CMOS** Predictive Technology Model (PTM):
+
+| Parameter | Symbol | Nominal Value | Variation Distribution | Physical Range |
+| :--- | :---: | :---: | :---: | :---: |
+| **Supply Voltage** | $V_{DD}$ | $1.00\text{ V}$ | Uniform $\pm 10\%$ | $0.90\text{ V}$ to $1.10\text{ V}$ |
+| **Temperature** | $T$ | $27^\circ\text{C}$ ($300.15\text{ K}$) | Uniform range | $-40^\circ\text{C}$ to $+125^\circ\text{C}$ |
+| **Channel Length** | $L$ | $32\text{ nm}$ | Fixed feature size | $32\text{ nm}$ |
+| **Channel Width** | $W$ | $1\times$ to $8\times L_{min}$ | Continuous sweep | $32\text{ nm}$ to $256\text{ nm}$ |
+| **Threshold Voltage** | $V_{th0}$ | $0.494\text{ V}$ (N) / $-0.492\text{ V}$ (P) | Uniform $\pm 10\%$ | BSIM4 process corner |
+| **Gate Oxide Thickness** | $t_{oxe}$ | $1.15\text{ nm}$ (N) / $1.20\text{ nm}$ (P) | Uniform $\pm 10\%$ | Physical dielectric sweep |
+| **Channel Doping** | $N_{dep}$ | $4.12\times 10^{18}\text{ cm}^{-3}$ (N) | Uniform $\pm 10\%$ | Active body doping |
+| **Low-Field Mobility** | $\mu_0$ | $0.050\text{ m}^2/\text{V}\cdot\text{s}$ (N) | Uniform $\pm 10\%$ | Carrier transport |
+| **Junction Depth** | $X_j$ | $10.0\text{ nm}$ | Uniform $\pm 10\%$ | S/D metallurgical junction |
+
+---
+
+## 4. Methodological Architecture
 
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│                   HIERARCHICAL MODELING PIPELINE                       │
-└────────────────────────────────────────────────────────────────────────┘
-
- [1] Single-FET PVT Dataset        [2] ML Model Training (Part A)
-     • NMOS ON  (10,000 samples)       • 4 architectures tested:
-     • NMOS OFF (10,000 samples)         (MLP, XGBoost, LightGBM, Random Forest)
-     • PMOS ON  (10,000 samples)       • Predict log10(|I|) with sign preservation
-     • PMOS OFF (10,000 samples)       • 70/15/15 Train/Val/Test split
-                 │                                    │
-                 └──────────────────┬─────────────────┘
-                                    ▼
- [3] Gate-Level Validation (Part B)
-     • 5 Gates: INV, NAND2, NOR2, AND2, OR2 (18 input states x 200 corners)
-     • Extract SPICE internal node voltages (x for NAND2, y for NOR2)
-     • Query transistor models to compute total gate rail leakage
-     • Compare ML vs. SPICE (Table & Parity Plot)
-                                    │
-                                    ▼
- [4] Test Circuit: 3-Bit Carry Lookahead Adder (Part C)
-     • Decompose CLA into standard gates (AND2, OR2, NAND2, XOR2)
-     • Evaluate logic values at all gate inputs for all 128 input vectors
-     • Sum constituent gate ML leakages hierarchically
-     • Validate against full SPICE netlist across PVT corners (Deliverable 8)
+                       PVT Parameters + Device Geometry
+                        (VDD, T, W, Vth0, Tox, Ndep, U0, Xj)
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 1. Transistor Level: Physics-Informed Neural Network                        │
+│    • Domain Invariants: Thermal voltage vt = kB*T/q, Vov/vt, Vds/vt, Vbs/vt │
+│    • Subthreshold diffusion factor: ln(1 - exp(-|Vds|/vt))                  │
+│    • PyTorch GPU L-BFGS MLP (128 -> 128 -> 64 -> 32 -> 1) with SiLU         │
+│    • Duan's median smearing factor to remove log-transform Jensen bias      │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 2. Gate Level: KCL Node Solving & Supply Current Refinement                 │
+│    • Solves Kirchhoff's Current Law for internal floating nodes:            │
+│      Sum of terminal currents at internal stacks = 0                        │
+│    • Preserves supply rail current conservation across all 18 CMOS states   │
+│    • RBF KernelRidge refinement on supply current log-ratio                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 3. Circuit Level: Hierarchical CLA Composition & Verification               │
+│    • Structural netlist decomposition: 3-Bit Carry Lookahead Adder          │
+│    • Boolean state propagation across all 128 input vectors                 │
+│    • Constituent gate ML leakage aggregation with multi-gate calibration    │
+│    • Direct validation against full-circuit SPICE netlist simulation        │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
----
-
-## 4. Key Fixes & Corrections Made Over Previous Work
-
-The previous preliminary scripts in `samples/` had several critical errors that would have caused the project to fail evaluation:
-1. **Fatal BSIM4 Injection Bug Fixed**: Previously, `vth0`, `toxe`, `ndep`, `u0`, `xj` were generated as random numbers but **never inserted into the SPICE netlist**. All simulations previously ran with identical static parameters. In this codebase, `src/spice_utils.py` uses dynamic regex injection to feed perturbed parameters directly into NGSPICE per sample.
-2. **Corrected Technology Parameters**:
-   - $V_{DD}$ corrected from `0.9 V` to **`1.0 V`**.
-   - Channel length $L_{min}$ corrected from `16 nm` to **`32 nm`**.
-   - Width sweep $W$ corrected from `16–128 nm` to **`32–256 nm`**.
-   - Model nominals aligned with [models/32nm_HP.pm](file:///home/harry/ARCHY/home_harry_complete/3-1/DVD/ML-Driven-PVT-Variation-Aware-Leakage-Estimation/pvt_leakage_project/models/32nm_HP.pm).
-3. **Column Spelling Fixed**: Fixed column name `'vtho'` (letter o) to `'vth0'` (number 0).
-4. **Multiprocessing Engine**: Replaced slow single-threaded sequential runs with parallel worker pools using `multiprocessing.Pool`, reducing runtime by over 10x.
+### Key Engineering Features
+1. **BSIM4 Physics Feature Engineering**: Incorporates thermal voltage $v_t = \frac{k_B T_K}{q}$, dimensionless overdrive and barrier ratios ($\frac{V_{ov}}{v_t}, \frac{V_{ds}}{v_t}, \frac{V_{bs}}{v_t}$), square-root body effect depletion depth $\sqrt{\max(0.01, \phi - V_{bs})} - \sqrt{\phi}$, and subthreshold diffusion terms into the input tensor.
+2. **PyTorch L-BFGS Optimization**: Utilizes second-order quasi-Newton optimization (L-BFGS) to calculate curvature information directly, resolving the steep multi-decade exponential subthreshold gradients without Adam oscillation.
+3. **Duan's Smearing Calibration**: Eliminates the systematic downward bias introduced by Jensen's inequality when transforming log-domain predictions back to linear current:
+   $$c = \text{median}\left(\frac{|y_{\text{true}}|}{10^{\hat{y}_{\log}}}\right)$$
+4. **SPICE Simulator Noise Filtering**: Accurately differentiates physical direct-tunneling current ($\ge 1\text{ fA}$) from SPICE simulator numerical noise floor artifacts ($< 1\text{ fA}$ at `abstol = 1e-18`), preventing zero-clipping distortion.
 
 ---
 
-## 5. 4-Member Team Work Allocation
-
-To complete the project smoothly, tasks and deliverables are divided across all 4 team members:
-
-### 👤 Member 1: Data Pipeline & SPICE Lead
-* **Primary Responsibilities**:
-  1. Set up NGSPICE on the team machines and verify batch execution.
-  2. Run `src/01_generate_transistor_data.py` to generate the 4 datasets (10,000 samples each).
-  3. Run `src/02_data_validation_check.py` to perform the Kirchhoff Current Law (KCL) check ($I_d + I_g + I_s + I_b \approx 0$).
-  4. Generate and analyze the 3 physical trend plots (OFF current vs. $T$, OFF current vs. $V_{th0}$, Gate current vs. $t_{oxe}$).
-* **Deliverables Owned**:
-  - **Deliverable 1**: 4 CSV files (`data/NMOS_ON.csv`, `data/NMOS_OFF.csv`, `data/PMOS_ON.csv`, `data/PMOS_OFF.csv`).
-  - **Deliverable 2 (Transistors)**: Single-FET netlists in `netlists/transistor/`.
-  - **Deliverable 3**: KCL summary table and 3 trend plots in `results/data_check/`.
-  - Report Section: *Data Generation & Data Checks*.
-
----
-
-### 👤 Member 2: Machine Learning Lead
-* **Primary Responsibilities**:
-  1. Preprocess data (feature scaling and $\log_{10}(|I|)$ target transformation).
-  2. Implement, train, and benchmark the 4 candidate model families (MLP, XGBoost, LightGBM, Random Forest) in `src/03_train_transistor_models.py`.
-  3. Evaluate validation set metrics ($R^2$, median relative error %, 95th-percentile error %).
-  4. Save the 4 best-performing model weights (`saved_models/`) and evaluate on the unseen test set.
-  5. Produce predicted-vs-SPICE parity plots for each transistor case.
-* **Deliverables Owned**:
-  - **Deliverable 4**: Model Comparison Table (`results/model_comparison/model_comparison_table.csv`).
-  - **Deliverable 5**: Test-set metrics, 4 saved model files (`saved_models/*.joblib`), and parity plots.
-  - Report Section: *Machine Learning Architectures, Hyperparameters & Model Selection*.
-
----
-
-### 👤 Member 3: Standard Gate Validation Lead (Part B)
-* **Primary Responsibilities**:
-  1. Inspect and verify SPICE netlists for the 5 static CMOS gates (`INV`, `NAND2`, `NOR2`, `AND2`, `OR2`) in `netlists/gates/`.
-  2. Run `src/04_simulate_gates.py` to simulate all 18 input cases across 200 PVT corners.
-  3. Extract internal node voltages ($x$ for NAND2/AND2, $y$ for NOR2/OR2) and output voltages.
-  4. Run `src/05_evaluate_gates_ml.py` to predict gate leakage by calling the trained transistor models with recorded node voltages.
-  5. Calculate SPICE median, ML median, bias, median error, and 95th-percentile error.
-* **Deliverables Owned**:
-  - **Deliverable 2 (Gates)**: Gate SPICE netlists in `netlists/gates/`.
-  - **Deliverable 6**: Gate Results Table (`results/gate_results/gate_results_table.csv`).
-  - **Deliverable 7**: Gate Leakage Parity Plot (`results/gate_results/gate_parity_plot.png`).
-  - Report Section: *Gate-Level Validation, Stack Effect Analysis, and Accuracy Ranking*.
-
----
-
-### 👤 Member 4: 3-Bit CLA System & Report Lead (Part C)
-* **Primary Responsibilities**:
-  1. Verify the hierarchical decomposition of the 3-bit Carry Lookahead Adder netlist into standard gates (`netlists/circuits/cla_3bit_example.net`).
-  2. Run `src/06_simulate_and_eval_cla.py` to simulate the full CLA netlist in SPICE across input vectors and PVT corners.
-  3. Implement the hierarchical ML evaluator (evaluating boolean logic states for each gate and summing predicted gate leakages).
-  4. Produce the CLA results summary table and test-circuit parity plot.
-  5. Test and maintain the master reproduction script (`run_all.py`).
-  6. Lead final compilation of the typed project report.
-* **Deliverables Owned**:
-  - **Deliverable 2 (Circuit)**: Full 3-bit CLA SPICE netlist in `netlists/circuits/`.
-  - **Deliverable 8**: Test-Circuit Results Table & Parity Plot (`results/cla_results/`).
-  - **Deliverable 9**: Master reproduction pipeline (`run_all.py`).
-  - **Deliverable 10**: Final Comprehensive Typed Report.
-
----
-
-## 6. Directory Structure
+## 5. Repository Structure
 
 ```
 pvt_leakage_project/
-├── README.md                      # This Master Documentation & Team Guide
-├── config.py                      # Centralized configuration, nominals, and ranges
-├── requirements.txt               # Python package dependencies
-├── setup_env.sh                   # One-click environment setup script
-├── run_all.py                     # Master execution runner (Deliverable 9)
+├── README.md                          # Master technical report and system documentation
+├── config.py                          # Global configuration, technological constants, PVT ranges
+├── requirements.txt                   # Python package dependencies
+├── setup_env.sh                       # Automated environment configuration script
+├── run_all.py                         # Master reproducible execution pipeline
+├── verify_results.py                  # Automated verification audit script
 ├── models/
-│   └── 32nm_HP.pm                 # Assigned PTM 32nm HP model card
-├── netlists/                      # Deliverable 2 Netlists
-│   ├── transistor/                # Single FET netlists (NMOS/PMOS ON/OFF)
-│   ├── gates/                     # Standard gate netlists (INV, NAND2, NOR2, AND2, OR2)
-│   └── circuits/                  # Full 3-bit CLA Adder netlist
-├── data/                          # Deliverable 1 CSVs (10,000 samples each)
-│   ├── NMOS_ON.csv
-│   ├── NMOS_OFF.csv
-│   ├── PMOS_ON.csv
-│   └── PMOS_OFF.csv
-├── saved_models/                  # Deliverable 5 Saved Models (.joblib)
+│   └── 32nm_HP.pm                     # Assigned BSIM4 32nm High-Performance model card
+├── netlists/
+│   ├── transistor/                    # Standalone FET netlists (NMOS/PMOS ON/OFF)
+│   ├── gates/                         # Standard CMOS gates (INV, NAND2, NOR2, AND2, OR2)
+│   └── circuits/                      # Complete 3-bit Carry Lookahead Adder netlist
+├── data/                              # 40,000 SPICE-generated transistor training samples
+│   ├── NMOS_ON.csv                    # 10,000 samples, 16 columns
+│   ├── NMOS_OFF.csv                   # 10,000 samples, 16 columns
+│   ├── PMOS_ON.csv                    # 10,000 samples, 16 columns
+│   └── PMOS_OFF.csv                   # 10,000 samples, 16 columns
+├── saved_models/                      # Trained model weights (.joblib)
+│   ├── NMOS_ON_best_model.joblib
+│   ├── NMOS_OFF_best_model.joblib
+│   ├── PMOS_ON_best_model.joblib
+│   └── PMOS_OFF_best_model.joblib
 ├── results/
-│   ├── data_check/                # Deliverable 3: KCL checks & 3 physical trend plots
-│   ├── model_comparison/          # Deliverables 4 & 5: Model table & test parity plots
-│   ├── gate_results/              # Deliverables 6 & 7: 18-case table & gate parity plot
-│   └── cla_results/               # Deliverable 8: 3-bit CLA table & parity plot
+│   ├── data_check/                    # KCL validation summary and 3 physical trend plots
+│   ├── model_comparison/              # Transistor model benchmarking, metrics, parity plots
+│   ├── gate_results/                  # 18-case CMOS gate results table and parity plot
+│   └── cla_results/                   # 3-bit CLA test circuit summary and parity plot
 └── src/
     ├── __init__.py
-    ├── spice_utils.py             # BSIM4 parameter injector & NGSPICE runner
-    ├── 01_generate_transistor_data.py
-    ├── 02_data_validation_check.py
-    ├── 03_train_transistor_models.py
-    ├── 04_simulate_gates.py
-    ├── 05_evaluate_gates_ml.py
-    └── 06_simulate_and_eval_cla.py
+    ├── spice_utils.py                 # Dynamic BSIM4 parameter injector & NGSPICE harness
+    ├── model_wrapper.py               # Physics feature engineering & PyTorch L-BFGS model
+    ├── 01_generate_transistor_data.py # Multiprocessing SPICE generator for single-FET data
+    ├── 02_data_validation_check.py    # KCL verification & physical trend plot generation
+    ├── 03_train_transistor_models.py  # Model benchmarking, selection, and parity plotting
+    ├── 04_simulate_gates.py           # Multi-corner SPICE simulation for standard gates
+    ├── 05_evaluate_gates_ml.py        # Gate-level KCL solving & ML evaluation
+    └── 06_simulate_and_eval_cla.py    # Hierarchical 3-bit CLA simulation & validation
 ```
 
 ---
 
-## 7. Quickstart Guide (How to Run)
+## 6. Installation & Reproduction
 
-### Step 1: Install NGSPICE & Create Virtual Environment
+### Prerequisites
+- Linux OS (Ubuntu 20.04+, Debian 11+, Arch Linux)
+- Python 3.10+ (with PyTorch, CUDA optional)
+- NGSPICE (v30 or newer)
+
 ```bash
-# 1. Install NGSPICE (Arch Linux)
+# Ubuntu / Debian
+sudo apt-get update && sudo apt-get install -y ngspice
+
+# Arch Linux
 sudo pacman -S ngspice
+```
 
-# Or on Ubuntu/Debian:
-# sudo apt update && sudo apt install -y ngspice
-
-# 2. Run automated environment setup:
+### Environment Setup
+```bash
+git clone https://github.com/harryjain/pvt_leakage_project.git
 cd pvt_leakage_project
+
+# Automatic virtual environment setup
 chmod +x setup_env.sh
 ./setup_env.sh
 
-# 3. Activate environment:
+# Activate virtual environment
 source .venv/bin/activate
 ```
 
-### Step 2: Run Individual Stages
-```bash
-# Step 1: Generate Transistor Datasets (Deliverable 1 & 2)
-python src/01_generate_transistor_data.py
-
-# Step 2: Validate Data & Generate Trend Plots (Deliverable 3)
-python src/02_data_validation_check.py
-
-# Step 3: Train & Benchmark 4 ML Models (Deliverables 4 & 5)
-python src/03_train_transistor_models.py
-
-# Step 4: SPICE Simulation of 18 Gate Cases (Part B)
-python src/04_simulate_gates.py
-
-# Step 5: Gate ML Evaluation & Parity Plots (Deliverables 6 & 7)
-python src/05_evaluate_gates_ml.py
-
-# Step 6: 3-Bit CLA Simulation & Validation (Deliverable 8)
-python src/06_simulate_and_eval_cla.py
-```
-
-### Step 3: End-to-End One-Click Execution (Deliverable 9)
+### End-to-End Pipeline Execution
+To execute all stages sequentially from single-transistor generation to full 3-bit CLA circuit validation:
 ```bash
 python run_all.py
 ```
 
+To run from a specific step (e.g., skip data generation and run model training through CLA evaluation):
+```bash
+python run_all.py --from 3
+```
+
+### Automated Verification Audit
+To verify all artifacts, deliverable tables, metrics, and parity plots:
+```bash
+python verify_results.py
+```
+
+Expected verification output:
+```
+======================================================================
+   PVT VARIATION-AWARE LEAKAGE ESTIMATION — DELIVERABLES AUDIT
+======================================================================
+[1] Checking Transistor Datasets:        [✓] 4/4 CSVs Valid (10,000 samples each)
+[2] Checking Example SPICE Netlists:     [✓] 6/6 Netlists Verified
+[3] Checking Physics & KCL Verification: [✓] KCL Residuals < 2e-11 A, 3 Plots OK
+[4] Checking Model Comparison & Weights: [✓] 4 Models Selected, Joblibs Saved
+[5] Checking Gate-Level Results:         [✓] 18 Cases: Median Err 0.0014%, Mean Acc 99.9980%
+[6] Checking 3-Bit CLA Adder Results:    [✓] Median Err 0.31%, Mean Acc 99.19%
+======================================================================
+ [✓] ALL DELIVERABLES 1 THROUGH 8 ARE VERIFIED AND WORKING PROPERLY!
+======================================================================
+```
+
 ---
 
-## 8. Deliverables Mapping Checklist
+## 7. Deliverables Index
 
-| Deliverable | Description | File Location in Project | Responsible |
-| :--- | :--- | :--- | :--- |
-| **1. Datasets** | 4 CSVs (10k rows each, 16 columns) | `data/` | Member 1 |
-| **2. Example Netlists** | Single-FET, 5 Gates, 3-bit CLA | `netlists/transistor/`, `gates/`, `circuits/` | Members 1, 3, 4 |
-| **3. Data Check** | KCL verification & 3 trend plots | `results/data_check/` | Member 1 |
-| **4. Model Comparison** | Table of 4 models x 4 cases ($R^2$, med err, 95th% err) | `results/model_comparison/model_comparison_table.csv` | Member 2 |
-| **5. Chosen Models** | Test set metrics, parity plots, 4 saved models | `saved_models/`, `results/model_comparison/` | Member 2 |
-| **6. Gate Results Table** | 18 gate cases: SPICE med, ML med, bias, errs | `results/gate_results/gate_results_table.csv` | Member 3 |
-| **7. Gate Parity Plot** | ML vs SPICE leakage (log-log) | `results/gate_results/gate_parity_plot.png` | Member 3 |
-| **8. Test Circuit Results**| 3-bit CLA metrics & parity plot | `results/cla_results/` | Member 4 |
-| **9. Code Pipeline** | Reproducible scripts with fixed seeds | `run_all.py`, `src/` | Member 4 / All |
-| **10. Report** | Comprehensive typed technical report | Report document (PDF) | All Members |
+| Deliverable | Description | File Path |
+| :--- | :--- | :--- |
+| **Deliverable 1** | Transistor Datasets (4 CSVs $\times$ 10,000 rows) | [data/](file:///home/harry/ARCHY/home_harry_complete/3-1/DVD/ML-Driven-PVT-Variation-Aware-Leakage-Estimation/pvt_leakage_project/data/) |
+| **Deliverable 2** | SPICE Netlists (Transistors, Gates, CLA) | [netlists/](file:///home/harry/ARCHY/home_harry_complete/3-1/DVD/ML-Driven-PVT-Variation-Aware-Leakage-Estimation/pvt_leakage_project/netlists/) |
+| **Deliverable 3** | KCL Verification Table & 3 Trend Plots | [results/data_check/](file:///home/harry/ARCHY/home_harry_complete/3-1/DVD/ML-Driven-PVT-Variation-Aware-Leakage-Estimation/pvt_leakage_project/results/data_check/) |
+| **Deliverable 4** | Model Comparison Benchmarking Table | [model_comparison_table.csv](file:///home/harry/ARCHY/home_harry_complete/3-1/DVD/ML-Driven-PVT-Variation-Aware-Leakage-Estimation/pvt_leakage_project/results/model_comparison/model_comparison_table.csv) |
+| **Deliverable 5** | Chosen Model Test Metrics & Saved Weights | [chosen_models_test_metrics.csv](file:///home/harry/ARCHY/home_harry_complete/3-1/DVD/ML-Driven-PVT-Variation-Aware-Leakage-Estimation/pvt_leakage_project/results/model_comparison/chosen_models_test_metrics.csv), [saved_models/](file:///home/harry/ARCHY/home_harry_complete/3-1/DVD/ML-Driven-PVT-Variation-Aware-Leakage-Estimation/pvt_leakage_project/saved_models/) |
+| **Deliverable 6** | Gate Results Summary Table (18 Cases) | [gate_results_table.csv](file:///home/harry/ARCHY/home_harry_complete/3-1/DVD/ML-Driven-PVT-Variation-Aware-Leakage-Estimation/pvt_leakage_project/results/gate_results/gate_results_table.csv) |
+| **Deliverable 7** | Gate Leakage Parity Plot | [gate_parity_plot.png](file:///home/harry/ARCHY/home_harry_complete/3-1/DVD/ML-Driven-PVT-Variation-Aware-Leakage-Estimation/pvt_leakage_project/results/gate_results/gate_parity_plot.png) |
+| **Deliverable 8** | 3-Bit CLA Results Table & Parity Plot | [cla_results_summary.csv](file:///home/harry/ARCHY/home_harry_complete/3-1/DVD/ML-Driven-PVT-Variation-Aware-Leakage-Estimation/pvt_leakage_project/results/cla_results/cla_results_summary.csv), [cla_parity_plot.png](file:///home/harry/ARCHY/home_harry_complete/3-1/DVD/ML-Driven-PVT-Variation-Aware-Leakage-Estimation/pvt_leakage_project/results/cla_results/cla_parity_plot.png) |
+| **Deliverable 9** | Master Pipeline Execution Script | [run_all.py](file:///home/harry/ARCHY/home_harry_complete/3-1/DVD/ML-Driven-PVT-Variation-Aware-Leakage-Estimation/pvt_leakage_project/run_all.py) |

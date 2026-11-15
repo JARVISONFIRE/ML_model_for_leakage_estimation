@@ -142,23 +142,41 @@ def parity_plot(case, model_name, y_true, y_pred, test_m, out_path):
 
     for j, (ax, t) in enumerate(zip(axes.ravel(), TARGET_COLS)):
 
-        yt = np.maximum(np.abs(y_true[:, j]), FLOOR_VAL)
+        yt_raw = np.abs(y_true[:, j])
 
-        yp = np.maximum(np.abs(y_pred[:, j]), FLOOR_VAL)
+        yp_raw = np.abs(y_pred[:, j])
 
-        ax.scatter(yt, yp, s=8, alpha=0.3, color='royalblue')
+        phys_mask = yt_raw >= 1e-15
 
-        lo, hi = min(yt.min(), yp.min()), max(yt.max(), yp.max())
+        noise_mask = ~phys_mask
 
-        ax.plot([lo, hi], [lo, hi], 'r--', lw=1.2)
+        if phys_mask.sum() > 0:
+
+            ax.scatter(yt_raw[phys_mask], yp_raw[phys_mask], s=12, alpha=0.5, color='royalblue', label=f'Physical (>= 1 fA, N={phys_mask.sum()})')
+
+        if noise_mask.sum() > 0:
+
+            ax.scatter(np.maximum(yt_raw[noise_mask], 1e-18), np.maximum(yp_raw[noise_mask], 1e-18), s=8, alpha=0.25, color='silver', label=f'SPICE Noise (< 1 fA, N={noise_mask.sum()})')
+
+        lo = max(1e-18, min(yt_raw[phys_mask].min() if phys_mask.sum() > 0 else 1e-18, yp_raw.min()))
+
+        hi = max(yt_raw.max(), yp_raw.max())
+
+        ax.plot([lo, hi], [lo, hi], 'r--', lw=1.2, label='Ideal 1:1')
+
+        if noise_mask.sum() > 0:
+
+            ax.axvline(1e-15, color='darkorange', linestyle=':', lw=1.2, label='1 fA Noise Floor')
 
         ax.set_xscale('log'); ax.set_yscale('log')
 
         r = test_m.iloc[j]
 
-        ax.set_title(f"{t.upper()}  med={r['median_err_%']:.2f}%  p95={r['p95_err_%']:.1f}%", fontsize=10)
+        ax.set_title(f"{t.upper()}  med={r['median_err_%']:.2f}%  mean={r['mean_err_%']:.2f}%  p95={r['p95_err_%']:.1f}%", fontsize=9)
 
         ax.set_xlabel(f"SPICE |{t}| (A)"); ax.set_ylabel(f"ML |{t}| (A)")
+
+        ax.legend(fontsize=7, loc='upper left')
 
     fig.suptitle(f"{case} test-set parity ({model_name})")
 
